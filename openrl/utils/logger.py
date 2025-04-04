@@ -205,3 +205,42 @@ class Logger:
                 self.writter.add_scalars(k, {k: v}, step)
         if self.log_to_terminal:
             logging.info(logging_info_str)
+
+    def log_episode_info(
+        self,
+        episode_num: int,
+        reward: float,
+        length: int,
+        global_step: int,
+    ) -> None:
+        """Log information about a single completed episode.
+        
+        Args:
+            episode_num: The episode number
+            reward: The total reward for the episode
+            length: The length of the episode
+            global_step: The global timestep when the episode completed
+        """
+        if not (self.use_wandb or self.use_tensorboard):
+            return
+        
+        # Create a dictionary with episode information
+        episode_info = {
+            "Train/episode_reward": reward,
+            "Train/episode_length": length,
+            "episode_number": episode_num
+        }
+        
+        # Log to wandb with the global step as x-axis
+        if self.use_wandb:
+            if not self.skip_logging:
+                wandb.log(episode_info, step=global_step)
+        
+        # Log to tensorboard if enabled
+        elif self.use_tensorboard:
+            for k, v in episode_info.items():
+                self.writter.add_scalar(k, v, global_step)
+        
+        # Log to terminal if enabled
+        if self.log_to_terminal:
+            logging.info(f"Episode {episode_num}: reward={reward:.2f}, length={length}, step={global_step}")

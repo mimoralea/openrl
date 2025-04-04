@@ -53,6 +53,10 @@ class OnPolicyDriver(RLDriver):
             logger,
             callback=callback,
         )
+        
+        # Set the logger in the environment wrapper if it has a logger attribute
+        if hasattr(self.envs, 'logger') and logger is not None:
+            self.envs.logger = logger
 
     def _inner_loop(
         self,
@@ -60,7 +64,7 @@ class OnPolicyDriver(RLDriver):
         """
         :return: True if training should continue, False if training should stop
         """
-        rollout_infos, continue_training = self.actor_rollout()
+        rollout_infos, continue_training, episode_infos = self.actor_rollout()
         if not continue_training:
             return False
 
@@ -70,6 +74,19 @@ class OnPolicyDriver(RLDriver):
         self.total_num_steps = (
             (self.episode + 1) * self.episode_length * self.n_rollout_threads
         )
+
+        # Process episode information separately
+        if episode_infos:
+            # Calculate statistics of completed episodes
+            episode_rewards = [info["r"] for info in episode_infos]
+            episode_lengths = [info["l"] for info in episode_infos]
+            
+            mean_episode_reward = sum(episode_rewards) / len(episode_rewards)
+            mean_episode_length = sum(episode_lengths) / len(episode_lengths)
+            
+            # Add episode metrics to the rollout_infos for logging
+            rollout_infos["Train/episode_reward_mean"] = mean_episode_reward
+            rollout_infos["Train/episode_length_mean"] = mean_episode_length
 
         if self.episode % self.log_interval == 0:
             # rollout_infos can only be used when env is wrapped with VevMonitor
@@ -151,15 +168,21 @@ class OnPolicyDriver(RLDriver):
             action_masks=action_masks,
         )
 
-    def actor_rollout(self) -> Tuple[Dict[str, Any], bool]:
+    def actor_rollout(self) -> Tuple[Dict[str, Any], bool, list]:
         self.callback.on_rollout_start()
 
         self.trainer.prep_rollout()
+        
+        # Track episode information during rollout
+        episode_infos = []
 
         for step in range(self.episode_length):
             values, actions, action_log_probs, rnn_states, rnn_states_critic = self.act(
                 step
             )
+
+            # Calculate the current global step
+            current_global_step = self.n_rollout_threads * (self.episode * self.episode_length + step)
 
             extra_data = {
                 "actions": actions,
@@ -167,15 +190,21 @@ class OnPolicyDriver(RLDriver):
                 "action_log_probs": action_log_probs,
                 "step": step,
                 "buffer": self.buffer,
+                "global_step": current_global_step  # Pass the global step to the environment
             }
 
             obs, rewards, dones, infos = self.envs.step(actions, extra_data)
+            
+            # Collect episode info from completed episodes
+            for info in infos:
+                if "episode" in info:
+                    episode_infos.append(info["episode"])
 
             self.agent.num_time_steps += self.envs.parallel_env_num
             # Give access to local variables
             self.callback.update_locals(locals())
             if self.callback.on_step() is False:
-                return {}, False
+                return {}, False, []
 
             data = {
                 "obs": obs,
@@ -192,15 +221,18 @@ class OnPolicyDriver(RLDriver):
             self.add2buffer(data)
 
         batch_rew_infos = self.envs.batch_rewards(self.buffer)
+        
+        # Process episode information separately instead of adding to batch_rew_infos
+        # We'll handle this in _inner_loop
 
         self.callback.on_rollout_end()
 
         if self.envs.use_monitor:
             statistics_info = self.envs.statistics(self.buffer)
             statistics_info.update(batch_rew_infos)
-            return statistics_info, True
+            return statistics_info, True, episode_infos
         else:
-            return batch_rew_infos, True
+            return batch_rew_infos, True, episode_infos
 
     @torch.no_grad()
     def compute_returns(self):
