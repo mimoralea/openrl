@@ -53,7 +53,7 @@ class OnPolicyDriver(RLDriver):
             logger,
             callback=callback,
         )
-        
+
         # Set the logger in the environment wrapper if it has a logger attribute
         if hasattr(self.envs, 'logger') and logger is not None:
             self.envs.logger = logger
@@ -80,10 +80,10 @@ class OnPolicyDriver(RLDriver):
             # Calculate statistics of completed episodes
             episode_rewards = [info["r"] for info in episode_infos]
             episode_lengths = [info["l"] for info in episode_infos]
-            
+
             mean_episode_reward = sum(episode_rewards) / len(episode_rewards)
             mean_episode_length = sum(episode_lengths) / len(episode_lengths)
-            
+
             # Add episode metrics to the rollout_infos for logging
             rollout_infos["Train/episode_reward_mean"] = mean_episode_reward
             rollout_infos["Train/episode_length_mean"] = mean_episode_length
@@ -172,7 +172,7 @@ class OnPolicyDriver(RLDriver):
         self.callback.on_rollout_start()
 
         self.trainer.prep_rollout()
-        
+
         # Track episode information during rollout
         episode_infos = []
 
@@ -194,7 +194,7 @@ class OnPolicyDriver(RLDriver):
             }
 
             obs, rewards, dones, infos = self.envs.step(actions, extra_data)
-            
+
             # Collect episode info from completed episodes
             for info in infos:
                 if "episode" in info:
@@ -221,7 +221,7 @@ class OnPolicyDriver(RLDriver):
             self.add2buffer(data)
 
         batch_rew_infos = self.envs.batch_rewards(self.buffer)
-        
+
         # Process episode information separately instead of adding to batch_rew_infos
         # We'll handle this in _inner_loop
 
