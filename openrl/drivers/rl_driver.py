@@ -150,7 +150,7 @@ class RLDriver(BaseDriver, ABC):
         self.real_step = 0
         for episode in range(episodes):
             if self.cfg.log_each_episode:
-                self.logger.info("Episode: {}/{}".format(episode, episodes))
+                self.logger.info("Iteration: {}/{}".format(episode, episodes))
             self.episode = episode
             continue_training = self._inner_loop()
             if not continue_training:
